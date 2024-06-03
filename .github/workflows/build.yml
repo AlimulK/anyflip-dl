@@ -24,7 +24,7 @@ jobs:
         run:  |
           pyinstaller --name="pyflip-DL" --icon="pyflip.ico" --add-data "pyflip.ico:." --windowed --onefile main.py
       - name: Upload artifacts
-        run: ./dist/your-code/your-code
+        run: ./dist
       - uses: actions/upload-artifact@v2
         with:
           path: dist/*
