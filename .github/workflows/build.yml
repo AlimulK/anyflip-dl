@@ -2,29 +2,20 @@ name: Build
 
 on:
     push:
-  
-jobs:
-    build:
 
-      runs-on: ${{ matrix.os }}
-      strategy:
+jobs:
+  pyinstaller-build:
+    runs-on: ${{ matrix.os }}
+    strategy:
         matrix:
-          os: ['windows-latest', 'ubuntu-latest', 'macos-latest']
-  
-      steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+            os: ['windows-latest', 'ubuntu-latest', 'macos-latest']
+    steps:
+      - name: Create Executable
+        uses: sayyid5416/pyinstaller@v1.6.0
         with:
-          python-version: '3.12'
-      - name: Install dependencies
-        run:  |
-          pip install -r requirements.txt
-      - name: Build with pyinstaller
-        run:  |
-          pyinstaller --name="pyflip-DL" --icon="pyflip.ico" --add-data "pyflip.ico:." --windowed --onefile main.py
-      - name: Upload artifacts
-        run: ./dist
-      - uses: actions/upload-artifact@v2
-        with:
-          path: dist/*
+          python_ver: '3.12'
+          pyinstaller_ver: '==6.7.0'
+          spec: 'main.py'
+          requirements: 'requirements.txt'
+          upload_exe_with_name: 'pyflip-DL'
+          options: --onefile, --name "pyflip-DL", --windowed, --icon "pyflip.ico",
