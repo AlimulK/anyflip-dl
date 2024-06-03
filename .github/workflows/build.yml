@@ -1,0 +1,30 @@
+name: Build
+
+on:
+    push:
+  
+jobs:
+    build:
+
+      runs-on: ${{ matrix.os }}
+      strategy:
+        matrix:
+          os: ['windows-latest', 'ubuntu-latest', 'macos-latest']
+  
+      steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run:  |
+          pip install -r requirements.txt
+      - name: Build with pyinstaller
+        run:  |
+          pyinstaller --name="pyflip-DL" --icon="pyflip.ico" --add-data "pyflip.ico:." --windowed --onefile main.py
+      - name: Upload artifacts
+        run: ./dist/your-code/your-code
+      - uses: actions/upload-artifact@v2
+        with:
+          path: dist/*
