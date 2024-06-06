@@ -18,4 +18,4 @@ jobs:
           spec: 'main.py'
           requirements: 'requirements.txt'
           upload_exe_with_name: 'pyflip-DL-macos'
-          options: --onefile, --name "pyflip-DL", --windowed, --icon "pyflip.ico",
+          options: --onedir, --name "pyflip-DL", --windowed, --icon "pyflip.ico",
