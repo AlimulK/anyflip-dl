@@ -46,7 +46,7 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__()
 
         # UI
-        self.setWindowTitle("PyFlip-DL")
+        self.setWindowTitle("pyflip-dl")
         self.setFixedSize(QSize(400, 100))
         icon = QIcon("pyflip.ico")
         self.setWindowIcon(icon)
@@ -54,7 +54,7 @@ class MainWindow(QMainWindow):
         self.label = QLabel("Anyflip URL:")
 
         self.url_line = QLineEdit()
-        self.url_line.setPlaceholderText("https://anyflip.com/npkza/alti")
+        self.url_line.setPlaceholderText("https://anyflip.com/sdxkb/wmdh")
 
         self.dl_button = QPushButton("Download")
         self.dl_button.clicked.connect(self.dl_button_clicked)

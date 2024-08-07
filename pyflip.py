@@ -134,7 +134,7 @@ class Pyflip:
         return new_flipbook
 
     def download_images(download_folder: str, flipbook: Flipbook):
-        """Downloads the PDF as a series of images (.jpg)"""
+        """Downloads the PDF as a series of images"""
         try:
             # Make the folder
             os.makedirs(download_folder, exist_ok=True)
@@ -169,8 +169,9 @@ class Pyflip:
         image_files = [
             os.path.join(img_dir, f)
             for f in os.listdir(img_dir)
-            if f.lower().endswith('.jpg')
         ]
+
+        image_files.sort()
 
         images = [Image.open(img_file) for img_file in image_files]
 
