@@ -1,4 +1,4 @@
-# pyflip-dl
+# anyflip-dl
 
 A GUI app to download anyflip books as PDFs.
 

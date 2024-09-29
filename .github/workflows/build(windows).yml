@@ -17,5 +17,5 @@ jobs:
           pyinstaller_ver: '==6.7.0'
           spec: 'main.py'
           requirements: 'requirements.txt'
-          upload_exe_with_name: 'pyflip-DL-windows'
-          options: --onefile, --name "pyflip-DL", --windowed, --icon "pyflip.ico",
+          upload_exe_with_name: 'anyflip-dl-windows'
+          options: --onefile, --name "anyflip-dl", --windowed, --icon "pyflip.ico",
