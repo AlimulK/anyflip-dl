@@ -1,11 +1,12 @@
 import sys
 
-from PySide6.QtCore import Qt, QSize, QRunnable, Slot, QThreadPool
+from PySide6.QtCore import QSize, QRunnable, Slot, QThreadPool
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
     QPushButton,
+    QCheckBox,
     QProgressBar,
     QLabel,
     QLineEdit,
@@ -16,12 +17,12 @@ from PySide6.QtWidgets import (
 
 import pyflip
 
-
 class Worker(QRunnable):
 
-    def __init__(self, url_line, prog_bar):
+    def __init__(self, url_line, keepfolder_check, prog_bar):
         super(Worker, self).__init__()
         self.url_line = url_line
+        self.keepfolder_check = keepfolder_check
         self.prog_bar = prog_bar
 
     @Slot()  # QtCore.Slot
@@ -33,7 +34,7 @@ class Worker(QRunnable):
         flipbook: pyflip.Flipbook = pyflip.Pyflip.prepare_download(self.url_line.text())
         # Download the images to a folder with the name of the flipbook
         pyflip.Pyflip.download_images(flipbook.title, flipbook)
-        pyflip.Pyflip.create_pdf(flipbook.title, flipbook.title, True)
+        pyflip.Pyflip.create_pdf(flipbook.title, flipbook.title, self.keepfolder_check.isChecked())
         # Delete the Flipbook object to free memory
         del flipbook
         # Make the bar stop
@@ -46,8 +47,8 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__()
 
         # UI
-        self.setWindowTitle("pyflip-dl")
-        self.setFixedSize(QSize(400, 100))
+        self.setWindowTitle("anyflip-dl")
+        self.setFixedSize(QSize(400, 120))
         icon = QIcon("pyflip.ico")
         self.setWindowIcon(icon)
 
@@ -58,6 +59,8 @@ class MainWindow(QMainWindow):
 
         self.dl_button = QPushButton("Download")
         self.dl_button.clicked.connect(self.dl_button_clicked)
+
+        self.keepfolder_check = QCheckBox("Keep Temporary Folder")
 
         self.prog_bar = QProgressBar(self)
         self.prog_bar.setTextVisible(False)
@@ -70,6 +73,7 @@ class MainWindow(QMainWindow):
 
         v_layout = QVBoxLayout()
         v_layout.addLayout(h_layout)
+        v_layout.addWidget(self.keepfolder_check)
         v_layout.addWidget(self.dl_button)
         v_layout.addWidget(self.prog_bar)
 
@@ -80,7 +84,7 @@ class MainWindow(QMainWindow):
 
     # Logic
     def dl_button_clicked(self):
-        worker = Worker(self.url_line, self.prog_bar)
+        worker = Worker(self.url_line, self.keepfolder_check, self.prog_bar)
         self.threadpool.start(worker)
 
 

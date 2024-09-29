@@ -159,7 +159,7 @@ class Pyflip:
             except Exception as e:
                 print(str(e))
 
-    def create_pdf(output_file: str, img_dir: str, del_folder: bool = True):
+    def create_pdf(output_file: str, img_dir: str, keep_folder: bool = False):
         """Put the images together in an array and then turn it into a PDF."""
         # Sanitize output_file
         output_file = output_file.replace("'", "").replace("\\", "").replace(":", "")
@@ -183,7 +183,8 @@ class Pyflip:
         else:
             print("No images found in the specified folder.")
 
-        if del_folder:
+        # If the keep folder option isn't checked then folder is deleted
+        if not keep_folder:
             try:
                 shutil.rmtree(img_dir)
             except Exception as e:
