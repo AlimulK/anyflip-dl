@@ -27,6 +27,16 @@ According to Apple's [advice](https://support.apple.com/en-gb/guide/mac-help/mh4
 5. Press Download and wait until the bar stops moving
 6. Profit
 
+## Developers
+
+> Python 3.13
+
+Set up your virtual environment as you usually do and install the dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
 ## Disclaimer
 
 Only use this tool to download books that officially allow PDFs to be downloaded.
