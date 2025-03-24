@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+from typing import List
 
 import requests
 from PIL import Image
@@ -9,17 +10,18 @@ from PIL import Image
 class Flipbook:
     """This represents a PDF book object from anyflip."""
 
-    def __init__(self, url, title, page_count, page_urls):
+    def __init__(self, url: str, title: str, page_count: int, page_urls: List[str]):
         self.url: str = url
         self.title: str = title
         self.page_count: int = page_count
-        self.page_urls: list[str] = page_urls
+        self.page_urls: List[str] = page_urls
 
 
 class ConfigJs:
     """A bunch of regex helper functions for configjs."""
 
-    def get_page_filenames(configjs: str) -> list[str]:
+    @staticmethod
+    def get_page_filenames(configjs: str) -> List[str]:
         pattern = re.compile(r'"n":\[".*?"]')
         matches = pattern.findall(configjs)
 
@@ -32,6 +34,7 @@ class ConfigJs:
 
         return matches
 
+    @staticmethod
     def get_book_title(configjs: str) -> str:
         pattern = re.compile(r'("?(bookConfig\.)?bookTitle"?[=]"(.*?)")|"title":"(.*?)"')
         match = pattern.search(configjs)
@@ -52,6 +55,7 @@ class ConfigJs:
 
         return match
 
+    @staticmethod
     def get_page_count(configjs: str) -> int:
         pattern = re.compile(r'"?(bookConfig\.)?(total)?[Pp]ageCount"?[=:]"?\d+"?')
         match = pattern.search(configjs)
@@ -79,6 +83,7 @@ class ConfigJs:
 class Pyflip:
     """This contains most of the important logic."""
 
+    @staticmethod
     def sanitize_url(anyflip_url: str) -> str:
         """This returns a str with the important part of the URL (/xxxxx/xxxx/)."""
         match = re.search(r'anyflip\.com/([^/]+)/([^/]+)', anyflip_url)
@@ -87,6 +92,7 @@ class Pyflip:
         else:
             raise ValueError("The URL does not contain the required path elements")
 
+    @staticmethod
     def download_config_js_file(anyflip_url: str) -> str:
         try:
             base_url = "https://online.anyflip.com"
@@ -100,6 +106,7 @@ class Pyflip:
         except requests.RequestException as e:
             return f"An error occurred: {e}"
 
+    @staticmethod
     def prepare_download(anyflip_url: str) -> Flipbook:
         """Create a `Flipbook` object for download
 
@@ -133,7 +140,8 @@ class Pyflip:
 
         return new_flipbook
 
-    def download_images(download_folder: str, flipbook: Flipbook):
+    @staticmethod
+    def download_images(download_folder: str, flipbook: Flipbook) -> None:
         """Downloads the PDF as a series of images"""
         try:
             # Make the folder
@@ -159,7 +167,8 @@ class Pyflip:
             except Exception as e:
                 print(str(e))
 
-    def create_pdf(output_file: str, img_dir: str, keep_folder: bool = False):
+    @staticmethod
+    def create_pdf(output_file: str, img_dir: str, keep_folder: bool = False) -> None:
         """Put the images together in an array and then turn it into a PDF."""
         # Sanitize output_file
         output_file = output_file.replace("'", "").replace("\\", "").replace(":", "")
