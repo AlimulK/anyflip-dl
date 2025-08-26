@@ -147,7 +147,7 @@ class Pyflip:
             # Make the folder
             os.makedirs(download_folder, exist_ok=True)
         except Exception as e:
-            return str(e)
+            print(str(e))
 
         # Downloads the PDF page by page
         for page in range(flipbook.page_count):
