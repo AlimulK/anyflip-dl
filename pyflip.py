@@ -127,22 +127,22 @@ class Pyflip:
 
         base_url = "https://online.anyflip.com"
 
-        if not page_file_names:
-            for i in range(1, page_count + 1):
-                download_path = anyflip_url + "files/mobile/" + f"{i}.jpg"
-                download_url = base_url + download_path
-                new_flipbook.page_urls.append(download_url)
-        else:
-            for i in range(page_count):
+        for i in range(page_count):
+            # Check that config.js has this page
+            if i < len(page_file_names):
                 download_path = anyflip_url + "files/large/" + page_file_names[i]
-                download_url = base_url + download_path
-                new_flipbook.page_urls.append(download_url)
+            # Else fallback on numbers
+            else:
+                download_path = anyflip_url + "files/large/" + f"{i + 1}.jpg"
+            
+            download_url = base_url + download_path
+            new_flipbook.page_urls.append(download_url)
 
         return new_flipbook
 
     @staticmethod
     def download_images(download_folder: str, flipbook: Flipbook) -> None:
-        """Downloads the PDF as a series of images"""
+        """Downloads the PDF as a series of images, skipping missing pages."""
         try:
             # Make the folder
             os.makedirs(download_folder, exist_ok=True)
