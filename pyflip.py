@@ -6,6 +6,15 @@ from typing import List
 import requests
 from PIL import Image
 
+from errors import (
+    PyflipError,
+    URLSanitizationError,
+    DownloadError,
+    ParseError,
+    FileSystemError,
+    PDFCreationError,
+)
+
 
 class Flipbook:
     """This represents a PDF book object from anyflip."""
@@ -40,7 +49,7 @@ class ConfigJs:
         match = pattern.search(configjs)
 
         if not match:
-            return "could not find book title"
+            return ""
 
         match = match.group(0)
 
@@ -49,7 +58,7 @@ class ConfigJs:
         elif ":" in match:
             match = match.split(":")[1]
         else:
-            return "could not find book title"
+            return ""
 
         match = match.replace("\"", "")
 
@@ -61,7 +70,7 @@ class ConfigJs:
         match = pattern.search(configjs)
 
         if not match:
-            return 0
+            raise ParseError("Could not find page count in config.js")
 
         match = match.group(0)
 
@@ -70,14 +79,14 @@ class ConfigJs:
         elif ":" in match:
             match = match.split(":")[1]
         else:
-            return 0
+            raise ParseError("Unexpected page count format in config.js")
 
         match = match.replace("\"", "")
 
         try:
             return int(match)
-        except ValueError:
-            return 0
+        except ValueError as exc:
+            raise ParseError("Invalid page count value in config.js") from exc
 
 
 class Pyflip:
@@ -90,21 +99,21 @@ class Pyflip:
         if match:
             return f'/{match.group(1)}/{match.group(2)}/'
         else:
-            raise ValueError("The URL does not contain the required path elements")
+            raise URLSanitizationError("The URL does not contain the required path elements")
 
     @staticmethod
     def download_config_js_file(anyflip_url: str) -> str:
-        try:
-            base_url = "https://online.anyflip.com"
-            config_js_path = "mobile/javascript/config.js"
-            config_js_url = base_url + anyflip_url + config_js_path
+        base_url = "https://online.anyflip.com"
+        config_js_path = "mobile/javascript/config.js"
+        config_js_url = base_url + anyflip_url + config_js_path
 
+        try:
             response = requests.get(config_js_url)
             response.raise_for_status()
+        except requests.RequestException as exc:
+            raise DownloadError(f"Failed to download config.js: {exc}") from exc
 
-            return response.text
-        except requests.RequestException as e:
-            return f"An error occurred: {e}"
+        return response.text
 
     @staticmethod
     def prepare_download(anyflip_url: str) -> Flipbook:
@@ -146,16 +155,21 @@ class Pyflip:
         try:
             # Make the folder
             os.makedirs(download_folder, exist_ok=True)
-        except Exception as e:
-            print(str(e))
+        except Exception as exc:
+            raise FileSystemError(f"Failed to create folder '{download_folder}': {exc}") from exc
 
         # Downloads the PDF page by page
         for page in range(flipbook.page_count):
             download_url = flipbook.page_urls[page]
-            response = requests.get(download_url)
+            try:
+                response = requests.get(download_url)
+            except requests.RequestException as exc:
+                raise DownloadError(f"Failed to download page {page + 1} from {download_url}: {exc}") from exc
 
             if response.status_code != 200:
-                print(f"During download from {download_url} received {response.status_code}")
+                raise DownloadError(
+                    f"Download returned status {response.status_code} for page {page + 1}: {download_url}"
+                )
 
             extension = os.path.splitext(download_url)[1]
             filename = f"{page:04d}{extension}"
@@ -164,8 +178,8 @@ class Pyflip:
             try:
                 with open(file_path, 'wb') as file:
                     file.write(response.content)
-            except Exception as e:
-                print(str(e))
+            except Exception as exc:
+                raise FileSystemError(f"Failed to write image '{file_path}': {exc}") from exc
 
     @staticmethod
     def create_pdf(output_file: str, img_dir: str, keep_folder: bool = False) -> None:
@@ -182,19 +196,25 @@ class Pyflip:
 
         image_files.sort()
 
-        images = [Image.open(img_file) for img_file in image_files]
+        try:
+            images = [Image.open(img_file) for img_file in image_files]
+        except Exception as exc:
+            raise PDFCreationError(f"Failed to open one or more images in '{img_dir}': {exc}") from exc
 
         # Save the images as a single PDF file
         if images:
-            images[0].save(
-                output_file, "PDF", resolution=100.0, save_all=True, append_images=images[1:]
-            )
+            try:
+                images[0].save(
+                    output_file, "PDF", resolution=100.0, save_all=True, append_images=images[1:]
+                )
+            except Exception as exc:
+                raise PDFCreationError(f"Failed to save PDF '{output_file}': {exc}") from exc
         else:
-            print("No images found in the specified folder.")
+            raise PDFCreationError("No images found in the specified folder.")
 
         # If the keep folder option isn't checked then folder is deleted
         if not keep_folder:
             try:
                 shutil.rmtree(img_dir)
-            except Exception as e:
-                print(str(e))
+            except Exception as exc:
+                raise FileSystemError(f"Failed to remove folder '{img_dir}': {exc}") from exc

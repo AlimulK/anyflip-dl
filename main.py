@@ -1,6 +1,6 @@
 import sys
 
-from PySide6.QtCore import QSize, QRunnable, Slot, QThreadPool
+from PySide6.QtCore import QSize, QRunnable, Slot, QThreadPool, QObject, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -13,9 +13,18 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QVBoxLayout,
     QWidget,
+    QMessageBox,
 )
 
 import pyflip
+from errors import PyflipError
+
+
+class WorkerSignals(QObject):
+    """Signals available from the running worker thread."""
+
+    error = Signal(str)
+    finished = Signal()
 
 class Worker(QRunnable):
 
@@ -24,21 +33,33 @@ class Worker(QRunnable):
         self.url_line = url_line
         self.keepfolder_check = keepfolder_check
         self.prog_bar = prog_bar
+        self.signals = WorkerSignals()
 
     @Slot()  # QtCore.Slot
     def run(self):
-        # Make the bar run
-        self.prog_bar.setMinimum(0)
-        self.prog_bar.setMaximum(0)
-        # Make the Flipbook object the user wants to download
-        flipbook: pyflip.Flipbook = pyflip.Pyflip.prepare_download(self.url_line.text())
-        # Download the images to a folder with the name of the flipbook
-        pyflip.Pyflip.download_images(flipbook.title, flipbook)
-        pyflip.Pyflip.create_pdf(flipbook.title, flipbook.title, self.keepfolder_check.isChecked())
-        # Delete the Flipbook object to free memory
-        del flipbook
-        # Make the bar stop
-        self.prog_bar.setMaximum(100)
+        try:
+            # Make the bar run
+            self.prog_bar.setMinimum(0)
+            self.prog_bar.setMaximum(0)
+            # Make the Flipbook object the user wants to download
+            flipbook: pyflip.Flipbook = pyflip.Pyflip.prepare_download(self.url_line.text())
+            # Download the images to a folder with the name of the flipbook
+            pyflip.Pyflip.download_images(flipbook.title, flipbook)
+            pyflip.Pyflip.create_pdf(
+                flipbook.title, flipbook.title, self.keepfolder_check.isChecked()
+            )
+            # Delete the Flipbook object to free memory
+            del flipbook
+            # Make the bar stop (success)
+            self.prog_bar.setMaximum(100)
+            self.signals.finished.emit()
+        except PyflipError as exc:
+            # Stop the bar and signal the error to the GUI thread
+            self.prog_bar.setMaximum(100)
+            self.signals.error.emit(str(exc))
+        except Exception as exc:  # Fallback for unexpected exceptions
+            self.prog_bar.setMaximum(100)
+            self.signals.error.emit(f"Unexpected error: {exc}")
 
 
 class MainWindow(QMainWindow):
@@ -85,7 +106,13 @@ class MainWindow(QMainWindow):
     # Logic
     def dl_button_clicked(self):
         worker = Worker(self.url_line, self.keepfolder_check, self.prog_bar)
+        worker.signals.error.connect(self.on_worker_error)
         self.threadpool.start(worker)
+
+    def on_worker_error(self, message: str):
+        # Ensure progress bar is stopped and show error dialog
+        self.prog_bar.setMaximum(100)
+        QMessageBox.critical(self, "Download Error", message)
 
 
 # Running the app
