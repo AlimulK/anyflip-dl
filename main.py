@@ -107,12 +107,23 @@ class MainWindow(QMainWindow):
     def dl_button_clicked(self):
         worker = Worker(self.url_line, self.keepfolder_check, self.prog_bar)
         worker.signals.error.connect(self.on_worker_error)
+        worker.signals.finished.connect(self.on_worker_finished)
         self.threadpool.start(worker)
 
     def on_worker_error(self, message: str):
         # Ensure progress bar is stopped and show error dialog
         self.prog_bar.setMaximum(100)
         QMessageBox.critical(self, "Download Error", message)
+
+    def on_worker_finished(self):
+        # Ensure progress bar is stopped and show success dialog
+        self.prog_bar.setMaximum(100)
+        QMessageBox.information(
+            self,
+            "Download Complete",
+            "PDF downloaded successfully.",
+            QMessageBox.StandardButton.Ok,
+        )
 
 
 # Running the app
