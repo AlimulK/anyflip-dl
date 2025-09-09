@@ -27,6 +27,12 @@ According to Apple's [advice](https://support.apple.com/en-gb/guide/mac-help/mh4
 5. Press Download and wait until the bar stops moving
 6. Profit
 
+### Errors
+
+If there was an error during download the app will let you know.
+You can still download the book by toggling `Download Incomplete Books`.
+This will simply skip the pages causing errors on creating the PDF.
+
 ## Developers
 
 > Python 3.13
@@ -43,4 +49,4 @@ Only use this tool to download books that officially allow PDFs to be downloaded
 
 ## Credits
 
-Inspired by [anyflip-downloader](https://github.com/Lofter1/anyflip-downloader).
+Inspired by and extends [anyflip-downloader](https://github.com/Lofter1/anyflip-downloader).
