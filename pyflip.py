@@ -150,13 +150,16 @@ class Pyflip:
         return new_flipbook
 
     @staticmethod
-    def download_images(download_folder: str, flipbook: Flipbook) -> None:
-        """Downloads the PDF as a series of images, skipping missing pages."""
+    def download_images(download_folder: str, flipbook: Flipbook, allow_incomplete: bool = False) -> tuple[int, int]:
+        """Downloads the PDF as a series of images."""
         try:
             # Make the folder
             os.makedirs(download_folder, exist_ok=True)
         except Exception as exc:
             raise FileSystemError(f"Failed to create folder '{download_folder}': {exc}") from exc
+
+        downloaded = 0
+        skipped = 0
 
         # Downloads the PDF page by page
         for page in range(flipbook.page_count):
@@ -164,9 +167,15 @@ class Pyflip:
             try:
                 response = requests.get(download_url)
             except requests.RequestException as exc:
+                if allow_incomplete:
+                    skipped += 1
+                    continue
                 raise DownloadError(f"Failed to download page {page + 1} from {download_url}: {exc}") from exc
 
             if response.status_code != 200:
+                if allow_incomplete:
+                    skipped += 1
+                    continue
                 raise DownloadError(
                     f"Download returned status {response.status_code} for page {page + 1}: {download_url}"
                 )
@@ -178,28 +187,47 @@ class Pyflip:
             try:
                 with open(file_path, 'wb') as file:
                     file.write(response.content)
+                downloaded += 1
             except Exception as exc:
+                if allow_incomplete:
+                    skipped += 1
+                    continue
                 raise FileSystemError(f"Failed to write image '{file_path}': {exc}") from exc
 
+        return downloaded, skipped
+
     @staticmethod
-    def create_pdf(output_file: str, img_dir: str, keep_folder: bool = False) -> None:
-        """Put the images together in an array and then turn it into a PDF."""
+    def create_pdf(
+        output_file: str,
+        img_dir: str,
+        keep_folder: bool = False,
+        allow_incomplete: bool = False,
+    ) -> None:
+        """Create a PDF from images in `img_dir`."""
         # Sanitize output_file
         output_file = output_file.replace("'", "").replace("\\", "").replace(":", "")
         output_file = output_file + ".pdf"
 
         # Get a list of all image files in the specified folder
-        image_files = [
-            os.path.join(img_dir, f)
-            for f in os.listdir(img_dir)
-        ]
+        image_files = [os.path.join(img_dir, f) for f in os.listdir(img_dir)]
 
         image_files.sort()
 
-        try:
-            images = [Image.open(img_file) for img_file in image_files]
-        except Exception as exc:
-            raise PDFCreationError(f"Failed to open one or more images in '{img_dir}': {exc}") from exc
+        images = []
+        for img_file in image_files:
+            try:
+                with Image.open(img_file) as im:
+                    if im.mode == "RGB":
+                        images.append(im.copy())
+                    else:
+                        images.append(im.convert("RGB"))
+            except Exception as exc:
+                if allow_incomplete:
+                    # Skip unreadable/corrupt images when allowed
+                    continue
+                raise PDFCreationError(
+                    f"Failed to open image '{img_file}': {exc}"
+                ) from exc
 
         # Save the images as a single PDF file
         if images:
@@ -210,7 +238,7 @@ class Pyflip:
             except Exception as exc:
                 raise PDFCreationError(f"Failed to save PDF '{output_file}': {exc}") from exc
         else:
-            raise PDFCreationError("No images found in the specified folder.")
+            raise PDFCreationError("No valid images found to create the PDF.")
 
         # If the keep folder option isn't checked then folder is deleted
         if not keep_folder:
