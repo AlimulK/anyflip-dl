@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List
 
 import requests
@@ -151,9 +152,8 @@ class Pyflip:
 
     @staticmethod
     def download_images(download_folder: str, flipbook: Flipbook, allow_incomplete: bool = False) -> tuple[int, int]:
-        """Downloads the PDF as a series of images."""
+        """Concurrently downloads the PDF as a series of images."""
         try:
-            # Make the folder
             os.makedirs(download_folder, exist_ok=True)
         except Exception as exc:
             raise FileSystemError(f"Failed to create folder '{download_folder}': {exc}") from exc
@@ -161,21 +161,27 @@ class Pyflip:
         downloaded = 0
         skipped = 0
 
-        # Downloads the PDF page by page
-        for page in range(flipbook.page_count):
+        if flipbook.page_count == 0:
+            return downloaded, skipped
+
+        cpu_count = os.cpu_count() or 1
+        suggested_workers = min(32, cpu_count + 4)
+        max_workers = min(suggested_workers, flipbook.page_count)
+        if max_workers <= 0:
+            max_workers = 1
+
+        def fetch_page(page: int) -> bool:
             download_url = flipbook.page_urls[page]
             try:
                 response = requests.get(download_url)
             except requests.RequestException as exc:
                 if allow_incomplete:
-                    skipped += 1
-                    continue
+                    return False
                 raise DownloadError(f"Failed to download page {page + 1} from {download_url}: {exc}") from exc
 
             if response.status_code != 200:
                 if allow_incomplete:
-                    skipped += 1
-                    continue
+                    return False
                 raise DownloadError(
                     f"Download returned status {response.status_code} for page {page + 1}: {download_url}"
                 )
@@ -187,12 +193,36 @@ class Pyflip:
             try:
                 with open(file_path, 'wb') as file:
                     file.write(response.content)
-                downloaded += 1
             except Exception as exc:
                 if allow_incomplete:
-                    skipped += 1
-                    continue
+                    try:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                    except Exception:
+                        pass
+                    return False
                 raise FileSystemError(f"Failed to write image '{file_path}': {exc}") from exc
+
+            return True
+
+        # Download pages concurrently to speed up large books.
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(fetch_page, page): page for page in range(flipbook.page_count)}
+            for future in as_completed(futures):
+                try:
+                    if future.result():
+                        downloaded += 1
+                    else:
+                        skipped += 1
+                except (DownloadError, FileSystemError):
+                    raise
+                except Exception as exc:
+                    if allow_incomplete:
+                        skipped += 1
+                        continue
+                    raise FileSystemError(
+                        f"Unexpected error while downloading page images: {exc}"
+                    ) from exc
 
         return downloaded, skipped
 
