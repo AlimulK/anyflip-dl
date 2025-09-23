@@ -8,7 +8,6 @@ import requests
 from PIL import Image
 
 from errors import (
-    PyflipError,
     URLSanitizationError,
     DownloadError,
     ParseError,
