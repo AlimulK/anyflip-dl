@@ -30,20 +30,6 @@ class ConfigJs:
     """A bunch of regex helper functions for configjs."""
 
     @staticmethod
-    def get_page_filenames(configjs: str) -> List[str]:
-        pattern = re.compile(r'"n":\[".*?"]')
-        matches = pattern.findall(configjs)
-
-        for i, match in enumerate(matches):
-            # Remove the part before and including the colon
-            match = match.split(":")[1]
-            # Remove the square brackets and double quotes
-            match = match.replace("[", "").replace("]", "").replace("\"", "")
-            matches[i] = match
-
-        return matches
-
-    @staticmethod
     def get_book_title(configjs: str) -> str:
         pattern = re.compile(r'("?(bookConfig\.)?bookTitle"?[=]"(.*?)")|"title":"(.*?)"')
         match = pattern.search(configjs)
@@ -88,6 +74,30 @@ class ConfigJs:
         except ValueError as exc:
             raise ParseError("Invalid page count value in config.js") from exc
 
+    @staticmethod
+    def get_page_filenames(configjs: str, anyflip_url: str, page_count: int) -> List[str]:
+        pattern = re.compile(r'"n"\s*:\s*\[(.*?)\]', re.DOTALL)
+        matches = pattern.findall(configjs)
+
+        # Flatten to a single filename list
+        filenames: List[str] = []
+        for group in matches:
+            # group is like '"1.jpg","2.jpg"' -> split and strip quotes/spaces
+            for item in group.split(","):
+                item = item.strip().strip('"').strip()
+                if item:
+                    filenames.append(item)
+
+        base_url = "https://online.anyflip.com"
+        page_urls: List[str] = []
+        for i in range(page_count):
+            if i < len(filenames):
+                download_path = anyflip_url + "files/large/" + filenames[i]
+            else:
+                download_path = anyflip_url + "files/large/" + f"{i + 1}.jpg"
+            page_urls.append(base_url + download_path)
+
+        return page_urls
 
 class Pyflip:
     """This contains most of the important logic."""
@@ -130,22 +140,10 @@ class Pyflip:
             title = anyflip_url
 
         page_count = ConfigJs.get_page_count(config_js)
-        page_file_names = ConfigJs.get_page_filenames(config_js)
+        # Build full page URLs from config.js (now handled inside the ConfigJs helper)
+        page_urls = ConfigJs.get_page_filenames(config_js, anyflip_url, page_count)
 
-        new_flipbook = Flipbook(url=anyflip_url, title=title, page_count=page_count, page_urls=[])
-
-        base_url = "https://online.anyflip.com"
-
-        for i in range(page_count):
-            # Check that config.js has this page
-            if i < len(page_file_names):
-                download_path = anyflip_url + "files/large/" + page_file_names[i]
-            # Else fallback on numbers
-            else:
-                download_path = anyflip_url + "files/large/" + f"{i + 1}.jpg"
-            
-            download_url = base_url + download_path
-            new_flipbook.page_urls.append(download_url)
+        new_flipbook = Flipbook(url=anyflip_url, title=title, page_count=page_count, page_urls=page_urls)
 
         return new_flipbook
 
