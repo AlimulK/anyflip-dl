@@ -92,7 +92,7 @@ class ConfigJs:
         page_urls: List[str] = []
         for i in range(page_count):
             if i < len(filenames):
-                download_path = anyflip_url + "files/large/" + filenames[i]
+                download_path = anyflip_url + filenames[i]
             else:
                 download_path = anyflip_url + "files/large/" + f"{i + 1}.jpg"
             page_urls.append(base_url + download_path)
