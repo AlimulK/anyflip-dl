@@ -2,6 +2,8 @@
 
 A GUI app to download anyflip books as PDFs.
 
+⚠️ **Critial bug stopping some downloads: [Details](https://github.com/AlimulK/anyflip-dl/issues/12)** ⚠️
+
 ## Install
 
 Download the most recent version for your platform: [Releases](https://github.com/AlimulK/pyflip-dl/releases).
