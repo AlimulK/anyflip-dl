@@ -1,275 +1,196 @@
-import os
 import re
-import shutil
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List
-
-import requests
+import httpx
+import asyncio
+import aiofiles
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
+import shutil
+import json
 from PIL import Image
 
-from errors import (
-    URLSanitizationError,
-    DownloadError,
-    ParseError,
-    FileSystemError,
-    PDFCreationError,
-)
+SANITISE_PATTERN = re.compile(r"anyflip\.com/([^/]+)/([^/]+)")
+DOMAIN_URL = "https://online.anyflip.com"
 
-
-class Flipbook:
-    """This represents a PDF book object from anyflip."""
-
-    def __init__(self, url: str, title: str, page_count: int, page_urls: List[str]):
-        self.url: str = url
-        self.title: str = title
-        self.page_count: int = page_count
-        self.page_urls: List[str] = page_urls
-
-
-class ConfigJs:
-    """A bunch of regex helper functions for configjs."""
-
-    @staticmethod
-    def get_book_title(configjs: str) -> str:
-        pattern = re.compile(r'("?(bookConfig\.)?bookTitle"?[=]"(.*?)")|"title":"(.*?)"')
-        match = pattern.search(configjs)
-
-        if not match:
-            return ""
-
-        match = match.group(0)
-
-        if "=" in match:
-            match = match.split("=")[1]
-        elif ":" in match:
-            match = match.split(":")[1]
-        else:
-            return ""
-
-        match = match.replace("\"", "")
-
-        return match
-
-    @staticmethod
-    def get_page_count(configjs: str) -> int:
-        pattern = re.compile(r'"?(bookConfig\.)?(total)?[Pp]ageCount"?[=:]"?\d+"?')
-        match = pattern.search(configjs)
-
-        if not match:
-            raise ParseError("Could not find page count in config.js")
-
-        match = match.group(0)
-
-        if "=" in match:
-            match = match.split("=")[1]
-        elif ":" in match:
-            match = match.split(":")[1]
-        else:
-            raise ParseError("Unexpected page count format in config.js")
-
-        match = match.replace("\"", "")
-
-        try:
-            return int(match)
-        except ValueError as exc:
-            raise ParseError("Invalid page count value in config.js") from exc
-
-    @staticmethod
-    def get_page_filenames(configjs: str, anyflip_url: str, page_count: int) -> List[str]:
-        pattern = re.compile(r'"n"\s*:\s*\[(.*?)\]', re.DOTALL)
-        matches = pattern.findall(configjs)
-
-        # Flatten to a single filename list
-        filenames: List[str] = []
-        for group in matches:
-            # group is like '"1.jpg","2.jpg"' -> split and strip quotes/spaces
-            for item in group.split(","):
-                item = item.strip().strip('"').strip()
-                if item:
-                    filenames.append(item)
-
-        base_url = "https://online.anyflip.com"
-        page_urls: List[str] = []
-        for i in range(page_count):
-            if i < len(filenames):
-                download_path = anyflip_url + "files/large/" + filenames[i]
-            else:
-                download_path = anyflip_url + "files/large/" + f"{i + 1}.jpg"
-            page_urls.append(base_url + download_path)
-
-        return page_urls
 
 class Pyflip:
-    """This contains most of the important logic."""
+    def __init__(self, full_url: str, configjs: dict) -> None:
+        self.url: str = _sanitise_url(full_url)
+        self.configjs = configjs
+        self.title: str = _get_title(self.configjs)
+        self.page_count: int = _get_page_count(self.configjs)
+        self.page_urls: List[str] = _get_page_urls(
+            self.configjs, self.url, self.page_count
+        )
 
-    @staticmethod
-    def sanitize_url(anyflip_url: str) -> str:
-        """This returns a str with the important part of the URL (/xxxxx/xxxx/)."""
-        match = re.search(r'anyflip\.com/([^/]+)/([^/]+)', anyflip_url)
-        if match:
-            return f'/{match.group(1)}/{match.group(2)}/'
-        else:
-            raise URLSanitizationError("The URL does not contain the required path elements")
+    async def download_pdf(self, client: httpx.AsyncClient) -> None:
+        await self.download_images(client)
+        self.create_pdf()
 
-    @staticmethod
-    def download_config_js_file(anyflip_url: str) -> str:
-        base_url = "https://online.anyflip.com"
-        config_js_path = "mobile/javascript/config.js"
-        config_js_url = base_url + anyflip_url + config_js_path
+    async def download_images(self, client: httpx.AsyncClient) -> None:
+        os.makedirs(self.title, exist_ok=True)
+        urls = self.page_urls
+        extension = os.path.splitext(urls[0])[1]
 
-        try:
-            response = requests.get(config_js_url)
-            response.raise_for_status()
-        except requests.RequestException as exc:
-            raise DownloadError(f"Failed to download config.js: {exc}") from exc
+        # 10 ~ 20 was the best during testing
+        sem = asyncio.Semaphore(15)
 
-        return response.text
-
-    @staticmethod
-    def prepare_download(anyflip_url: str) -> Flipbook:
-        """Create a `Flipbook` object for download
-
-        Implicitly requires `sanitize_url` since `anyflip_url`
-        needs to be a sanitized url.
-        """
-        anyflip_url = Pyflip.sanitize_url(anyflip_url)
-        config_js = Pyflip.download_config_js_file(anyflip_url)
-
-        title = ConfigJs.get_book_title(config_js)
-        if not title:
-            title = anyflip_url
-
-        page_count = ConfigJs.get_page_count(config_js)
-        # Build full page URLs from config.js (now handled inside the ConfigJs helper)
-        page_urls = ConfigJs.get_page_filenames(config_js, anyflip_url, page_count)
-
-        new_flipbook = Flipbook(url=anyflip_url, title=title, page_count=page_count, page_urls=page_urls)
-
-        return new_flipbook
-
-    @staticmethod
-    def download_images(download_folder: str, flipbook: Flipbook, allow_incomplete: bool = False) -> tuple[int, int]:
-        """Concurrently downloads the PDF as a series of images."""
-        try:
-            os.makedirs(download_folder, exist_ok=True)
-        except Exception as exc:
-            raise FileSystemError(f"Failed to create folder '{download_folder}': {exc}") from exc
-
-        downloaded = 0
-        skipped = 0
-
-        if flipbook.page_count == 0:
-            return downloaded, skipped
-
-        cpu_count = os.cpu_count() or 1
-        suggested_workers = min(32, cpu_count + 4)
-        max_workers = min(suggested_workers, flipbook.page_count)
-        if max_workers <= 0:
-            max_workers = 1
-
-        def fetch_page(page: int) -> bool:
-            download_url = flipbook.page_urls[page]
-            try:
-                response = requests.get(download_url)
-            except requests.RequestException as exc:
-                if allow_incomplete:
-                    return False
-                raise DownloadError(f"Failed to download page {page + 1} from {download_url}: {exc}") from exc
-
-            if response.status_code != 200:
-                if allow_incomplete:
-                    return False
-                raise DownloadError(
-                    f"Download returned status {response.status_code} for page {page + 1}: {download_url}"
-                )
-
-            extension = os.path.splitext(download_url)[1]
-            filename = f"{page:04d}{extension}"
-            file_path = os.path.join(download_folder, filename)
-
-            try:
-                with open(file_path, 'wb') as file:
-                    file.write(response.content)
-            except Exception as exc:
-                if allow_incomplete:
-                    try:
-                        if os.path.exists(file_path):
-                            os.remove(file_path)
-                    except Exception:
-                        pass
-                    return False
-                raise FileSystemError(f"Failed to write image '{file_path}': {exc}") from exc
-
-            return True
-
-        # Download pages concurrently to speed up large books.
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(fetch_page, page): page for page in range(flipbook.page_count)}
-            for future in as_completed(futures):
+        async def _dl1(idx: int, url: str):
+            async with sem:
                 try:
-                    if future.result():
-                        downloaded += 1
-                    else:
-                        skipped += 1
-                except (DownloadError, FileSystemError):
-                    raise
-                except Exception as exc:
-                    if allow_incomplete:
-                        skipped += 1
-                        continue
-                    raise FileSystemError(
-                        f"Unexpected error while downloading page images: {exc}"
-                    ) from exc
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+                    data = resp.content
 
-        return downloaded, skipped
+                    filename = f"{idx:04d}{extension}"
+                    file_path = os.path.join(self.title, filename)
 
-    @staticmethod
-    def create_pdf(
-        output_file: str,
-        img_dir: str,
-        keep_folder: bool = False,
-        allow_incomplete: bool = False,
-    ) -> None:
-        """Create a PDF from images in `img_dir`."""
-        # Sanitize output_file
-        output_file = output_file.replace("'", "").replace("\\", "").replace(":", "")
-        output_file = output_file + ".pdf"
+                    async with aiofiles.open(file_path, "wb") as f:
+                        await f.write(data)
 
-        # Get a list of all image files in the specified folder
+                except Exception as e:
+                    raise ValueError(f"[Error] {url}: {e}")
+
+        tasks = [asyncio.create_task(_dl1(i, u)) for i, u in enumerate(urls)]
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    def create_pdf(self) -> None:
+        img_dir = self.title
+        output_file = self.title + ".pdf"
         image_files = [os.path.join(img_dir, f) for f in os.listdir(img_dir)]
 
-        image_files.sort()
-
-        images = []
-        for img_file in image_files:
-            try:
-                with Image.open(img_file) as im:
-                    if im.mode == "RGB":
-                        images.append(im.copy())
-                    else:
-                        images.append(im.convert("RGB"))
-            except Exception as exc:
-                if allow_incomplete:
-                    # Skip unreadable/corrupt images when allowed
-                    continue
-                raise PDFCreationError(
-                    f"Failed to open image '{img_file}': {exc}"
-                ) from exc
-
-        # Save the images as a single PDF file
-        if images:
-            try:
-                images[0].save(
-                    output_file, "PDF", resolution=100.0, save_all=True, append_images=images[1:]
-                )
-            except Exception as exc:
-                raise PDFCreationError(f"Failed to save PDF '{output_file}': {exc}") from exc
+        if not image_files:
+            raise FileNotFoundError("No images found")
         else:
-            raise PDFCreationError("No valid images found to create the PDF.")
+            image_files.sort()
 
-        # If the keep folder option isn't checked then folder is deleted
-        if not keep_folder:
+        def load_image(path):
             try:
-                shutil.rmtree(img_dir)
-            except Exception as exc:
-                raise FileSystemError(f"Failed to remove folder '{img_dir}': {exc}") from exc
+                with Image.open(path) as im:
+                    return im.copy()
+            except Exception as e:
+                raise LookupError(f"Failed to open '{path}': {e}") from e
+
+        # Minimum 8 worker threads
+        cpu_count = os.cpu_count() or 4
+        max_workers = cpu_count * 2
+
+        results = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            futures = {ex.submit(load_image, p): p for p in image_files}
+            for fut in as_completed(futures):
+                path = futures[fut]
+                results[path] = fut.result()
+
+        # Sort results by filename order
+        images = [results[path] for path in image_files]
+
+        try:
+            images[0].save(
+                output_file,
+                "PDF",
+                save_all=True,
+                append_images=images[1:],
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to save PDF: {e}")
+
+        try:
+            shutil.rmtree(img_dir)
+        except OSError as e:
+            raise OSError(f"Failed to remove '{img_dir}': {e}")
+
+
+def _sanitise_url(full_url: str) -> str:
+    match = SANITISE_PATTERN.search(full_url)
+
+    if match:
+        return f"/{match.group(1)}/{match.group(2)}/"
+    else:
+        raise ValueError("Required path elements not found")
+
+
+async def fetch_configjs(full_url: str, client: httpx.AsyncClient) -> dict:
+    url = _sanitise_url(full_url)
+    CONFIGJS_PATH = "mobile/javascript/config.js"
+    config_js_url = DOMAIN_URL + url + CONFIGJS_PATH
+    print(config_js_url)
+
+    try:
+        resp = await client.get(config_js_url)
+        js_text = resp.text.strip()
+
+        start = js_text.find("{")
+        end = js_text.rfind("}") + 1
+
+        if start == -1 or end == 0:
+            raise ValueError("Could not find a valid configuration object in config.js")
+
+        obj_str = js_text[start:end]
+
+        try:
+            return json.loads(obj_str)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse config.js: {e}")
+
+    except httpx.RequestError as e:
+        raise ValueError(f"Failed to get config.js: {e}")
+
+
+def _get_title(config_dict: dict) -> str:
+    meta = config_dict.get("meta", {})
+    title = meta.get("title")
+
+    if not title:
+        title = config_dict.get("title")
+    
+    if not title and "bookConfig" in config_dict:
+        bc = config_dict["bookConfig"]
+        title = bc.get("bookTitle") if isinstance(bc, dict) else None
+
+    return re.sub(r'[<>:"/\\|?*]', '', str(title)).strip().strip('.')
+
+
+def _get_page_count(config_dict: dict) -> int:
+    count = config_dict.get("totalPageCount") or config_dict.get("pageCount")
+
+    if count is None and "bookConfig" in config_dict:
+        book_config = config_dict["bookConfig"]
+        if isinstance(book_config, dict):
+            count = book_config.get("totalPageCount") or book_config.get("pageCount")
+
+    if count is None:
+        pages_list = config_dict.get("fliphtml5_pages", [])
+        if pages_list:
+            count = len(pages_list)
+
+    if count is None:
+        raise ValueError("Page count not found in config data")
+    try:
+        return int(count)
+    except (ValueError, TypeError):
+        raise ValueError(f"Invalid page count format: {count}")
+
+
+def _get_page_urls(config_dict: dict, url: str, page_count: int) -> List[str]:
+    urls: List[str] = []
+    pages_list = config_dict.get("fliphtml5_pages", [])
+
+    for i in range(page_count):
+        download_path = ""
+        if i < len(pages_list):
+            page_data = pages_list[i]
+            raw_filenames = page_data.get("n", [])
+            if raw_filenames:
+                clean_path = raw_filenames[0].replace("\\", "").replace("../", "")
+                download_path = clean_path
+
+        if not download_path:
+            download_path = f"files/large/{i + 1}.webp"
+        elif "files/large/" not in download_path:
+            download_path = f"files/large/{download_path}"
+
+        base = url if url.endswith("/") else url + "/"
+        urls.append(DOMAIN_URL + base + download_path)
+
+    return urls
