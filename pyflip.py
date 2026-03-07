@@ -143,12 +143,12 @@ def _get_title(config_dict: dict) -> str:
 
     if not title:
         title = config_dict.get("title")
-    
+
     if not title and "bookConfig" in config_dict:
         bc = config_dict["bookConfig"]
         title = bc.get("bookTitle") if isinstance(bc, dict) else None
 
-    return re.sub(r'[<>:"/\\|?*]', '', str(title)).strip().strip('.')
+    return re.sub(r'[<>:"/\\|?*]', "", str(title)).strip().strip(".")
 
 
 def _get_page_count(config_dict: dict) -> int:
