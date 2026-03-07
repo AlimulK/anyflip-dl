@@ -1,8 +1,6 @@
 # anyflip-dl
 
-A GUI app to download anyflip books as PDFs.
-
-⚠️ **Critial bug stopping some downloads: [Details](https://github.com/AlimulK/anyflip-dl/issues/12)** ⚠️
+A simple app to download anyflip books as PDFs.
 
 ## Install
 
@@ -32,12 +30,11 @@ According to Apple's [advice](https://support.apple.com/en-gb/guide/mac-help/mh4
 ### Errors
 
 If there was an error during download the app will let you know.
-You can still download the book by toggling `Download Incomplete Books`.
-This will simply skip the pages causing errors on creating the PDF.
+Incomplete books will still be downloaded, however pages causing errors will be skipped.
 
 ## Developers
 
-> Python 3.13
+> Python 3.14
 
 Set up your virtual environment as you usually do and install the dependencies:
 
