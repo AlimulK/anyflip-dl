@@ -1,30 +1,17 @@
 [project]
 name = "anyflip-dl"
 author = "Ali Karim"
-version = "1.0.3"
+version = "1.1.1"
 description = "App to download anyflip books as PDFs"
 readme = "README.md"
 license = "GPL-3.0-only"
 license-files = ["LICENSE"]
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
-    "altgraph==0.17.4",
-    "certifi==2025.1.31",
-    "charset-normalizer==3.4.1",
-    "idna==3.10",
-    "packaging==24.2",
-    "pefile==2023.2.7",
-    "pillow==11.1.0",
-    "pyinstaller==6.12.0",
-    "pyinstaller-hooks-contrib==2025.2",
-    "pyside6==6.8.2.1",
-    "pyside6-addons==6.8.2.1",
-    "pyside6-essentials==6.8.2.1",
-    "pywin32-ctypes==0.2.3",
-    "requests==2.32.3",
-    "setuptools==77.0.3",
-    "shiboken6==6.8.2.1",
-    "urllib3==2.3.0",
+    "aiofiles>=25.1.0",
+    "httpx[http2]>=0.28.1",
+    "pillow>=12.1.1",
+    "pyside6>=6.10.2",
 ]
 
 [project.urls]
