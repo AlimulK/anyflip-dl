@@ -154,6 +154,11 @@ def _get_title(config_dict: dict) -> str:
 def _get_page_count(config_dict: dict) -> int:
     count = config_dict.get("totalPageCount") or config_dict.get("pageCount")
 
+    if count is None and "meta" in config_dict:
+        meta = config_dict["meta"]
+        if isinstance(meta, dict):
+            count = meta.get("pageCount") or meta.get("totalPageCount")
+
     if count is None and "bookConfig" in config_dict:
         book_config = config_dict["bookConfig"]
         if isinstance(book_config, dict):
