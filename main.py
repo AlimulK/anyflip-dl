@@ -21,7 +21,7 @@ import pyflip
 
 
 class WorkerSignals(QObject):
-    """Signals available from the running worker thread."""
+    """Signals available from the running worker thread"""
 
     error = Signal(str)
     finished = Signal()
@@ -120,7 +120,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self,
             "Download Complete",
-            "PDF downloaded successfully.",
+            "PDF downloaded successfully",
             QMessageBox.StandardButton.Ok,
         )
 
