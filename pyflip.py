@@ -192,7 +192,7 @@ def _get_page_urls(config_dict: dict, url: str, page_count: int) -> List[str]:
 
         if not download_path:
             download_path = f"files/large/{i + 1}.webp"
-        elif "files/large/" not in download_path:
+        elif not download_path.startswith("files/"):
             download_path = f"files/large/{download_path}"
 
         base = url if url.endswith("/") else url + "/"
